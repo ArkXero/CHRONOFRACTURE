@@ -42,7 +42,13 @@ func boss(): # Loki while he is on stage, else null
 
 func menu_rect(i: int) -> Rect2: # where pause menu entry i sits; game.gd uses this for mouse picking
 	var size := get_viewport_rect().size
-	return Rect2(size.x / 2 - 144, size.y / 2 - 110 + i * 80, 288, 72)
+	var top := (size.y - (Data.MENU.size() * 80 + 160)) / 2 + 96
+	return Rect2(size.x / 2 - 144, top + i * 80, 288, 72)
+
+
+func main_rect() -> Rect2: # Main Menu on an ending screen
+	var size := get_viewport_rect().size
+	return Rect2(size.x / 2 - 144, size.y - 120, 288, 72)
 
 
 func _draw() -> void:
@@ -51,7 +57,11 @@ func _draw() -> void:
 	if game.gui <= 0: # the main menu and the opening: no run to report on yet
 		return
 	if game.phase in Data.SCREENS:
-		text(Vector2(0, size.y * 0.25), Data.SCREENS[game.phase] + "\n\nESC: menu", center, size.x, 22)
+		text(Vector2(0, size.y * 0.25), Data.SCREENS[game.phase] + "\n\nESC: pause menu", center, size.x, 22)
+		var r := main_rect()
+		var hover := r.has_point(get_global_mouse_position())
+		draw_texture_rect_region(button, r, Rect2(96 if hover else 0, 0, 96, 24))
+		text(Vector2(r.position.x, r.position.y + 43), "Main Menu", center, r.size.x, 17)
 	else:
 		draw_health(size)
 		draw_abilities(size)

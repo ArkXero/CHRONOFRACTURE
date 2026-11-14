@@ -119,7 +119,7 @@ const ICONS := { # upgrade name -> (column, row) on the icon sheet
 	"Neural Hack": Vector2i(9, 67), "Blink": Vector2i(12, 41), "Nova": Vector2i(6, 65), "Seeker Bolts": Vector2i(5, 61),
 	"Soul Leech": Vector2i(2, 41), "Spell Book": Vector2i(3, 18), "Frost Imbue": Vector2i(13, 63), "Fire Imbue": Vector2i(13, 62),
 	"Shock Imbue": Vector2i(13, 64), "Toxin Imbue": Vector2i(1, 45)}
-const MENU := ["Resume", "Jump to Loki (testing)", "Restart run", "Quit"] # pause menu
+const MENU := ["Resume", "Jump to Loki (testing)", "Restart run", "Main Menu", "Quit"] # pause menu
 const BANES := {volatile = Color.ORANGE, vampiric = Color.RED, berserker = Color.YELLOW}
 const DROP := 0.05 # chance an enemy drops a health pack
 const HEAL := 0.1 # share of max health a pack restores
