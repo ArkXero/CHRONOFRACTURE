@@ -50,7 +50,7 @@ Chronofracture has 3 distinct dimensions you can visit, each with their own uniq
 
 - [@ArkXero](https://github.com/ArkXero)
 - [@RithikSamanthula](https://github.com/RithikSamanthula)
-- [@RithikSamanthula](https://github.com/RithikSamanthula)
+- [@ZamanZahid](https://github.com/ZamanZahid)
 
 ## Acknowledgements of Assets
 
