@@ -126,7 +126,10 @@ func run() -> void:
 			game.start_wave()
 		var flyers: Array = combat.enemies.filter(func(e): return e.get("fly", false))
 		check(combat.art(Data.PLATFORMS[u].path) != null, "dimension %d loads its platform art from the root project" % u)
-		check(not flyers.is_empty(), "dimension %d spawns a flying enemy" % u)
+		if u == 3: # Loki's escort walks
+			check(combat.enemies.any(func(e): return e.kind == "Chitauri"), "dimension 3 escorts Loki with Chitauri")
+		else:
+			check(not flyers.is_empty(), "dimension %d spawns a flying enemy" % u)
 		check(combat.has_method("platforms"), "dimension %d supplies raised platforms" % u)
 		if combat.has_method("platforms"):
 			var ledges: Array = combat.call("platforms")
@@ -158,7 +161,7 @@ func run() -> void:
 			combat.stats.chrono = 1
 			combat.cd.chrono = 12.0
 			combat._process(0.1)
-			check(is_equal_approx(combat.ground() - 90 - foe.pos.y, normal * 0.3), "Chrono Implant slows flying movement")
+			check(is_equal_approx(combat.ground() - 90 - foe.pos.y, normal * 0.3), "Sandevistan slows flying movement")
 			var frozen: Vector2 = foe.pos
 			game.paused = true
 			combat._process(1.0)
@@ -181,7 +184,10 @@ func run() -> void:
 	if not chief.is_empty():
 		chief[0].hp = 0
 		combat._process(0.02)
-		check(game.phase == "unbroken", "defeating Loki finishes the run even with flyers alive")
+		check(game.phase == "finale", "defeating Loki starts his death scene even with his escort alive")
+		game._process(Data.FINALE.burst + 0.01)
+		game._process(Data.FINALE.end)
+		check(game.phase == "unbroken" and combat.crown != null and combat.enemies.is_empty(), "his death scene ends the run and leaves his crown")
 	game.new_run(false, 0)
 	check(not game.boss, "restarting after Loki returns to a regular dimension")
 

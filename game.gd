@@ -3,7 +3,8 @@ extends Node2D
 
 const Data := preload("res://data.gd")
 
-var phase := "menu" # menu, cine, play, pick, shift, over, unbroken, guardian
+var phase := "menu" # menu, cine, play, pick, shift, taunt, finale, fallen, over, unbroken, guardian
+var scene := 0.0 # seconds into the current pick, taunt (Loki speaks), finale (Loki dies) or fallen (he beat you) phase
 var cine := 0.0 # seconds into the opening cutscene (phase "cine"); its beats are Data.CINE
 var gui := 0.0 # how solid the in-game GUI is: it fades in as the opening ends
 var waves := 0 # completed global waves
@@ -12,6 +13,7 @@ var local := 0 # waves cleared since entering this universe: fracture counter an
 var paradox := 0 # successful rebirths
 var boss := false
 var loadout := {} # upgrade name -> level
+var admin := {} # upgrade name -> levels handed to every new run by the admin panel on the options page
 var choices := []
 var toast := ""
 var toast_t := 0.0
@@ -48,6 +50,8 @@ func new_run(keep := false, to := randi() % 3) -> void: # keep: carry the last r
 				loadout[up[0]] = 1
 				if up[0] in Data.MELEE:
 					combat.stats.form = up[0]
+			for n in admin.get(up[0], 0):
+				gain(up)
 	enter(to)
 
 
@@ -85,6 +89,7 @@ func clear_wave() -> void:
 		say("STABILIZED: death here now means rebirth, not the end")
 	if waves % 2 == 0:
 		phase = "pick" # the Sword comes first; other melee forms are only offered once you have one
+		scene = 0.0
 		var armed: bool = combat.stats.melee > 0
 		choices = Data.UPGRADES[universe].filter(func(up): return not up[0] in Data.MELEE or (up[0] == "Sword") != armed)
 		choices.shuffle()
@@ -95,10 +100,39 @@ func clear_wave() -> void:
 
 func die() -> void:
 	if boss or local < 2:
-		phase = "over"
+		phase = "fallen" if boss else "over" # Loki's own game over only leads back to the main menu
+		scene = 0.0
 		return
 	paradox += 1
 	warp((universe + randi_range(1, 2)) % 3) # a random *other* universe
+
+
+func taunt() -> void: # the fight holds still while Loki speaks
+	phase = "taunt"
+	scene = 0.0
+
+
+func finale() -> void: # Loki is beaten: his death plays out before the ending
+	phase = "finale"
+	scene = 0.0
+
+
+func take(up: Array) -> void: # an upgrade picked between waves
+	gain(up)
+	start_wave()
+
+
+func gain(up: Array) -> void: # one more level of an upgrade
+	var stats: Dictionary = combat.stats
+	stats[up[2]] += up[3]
+	if up[0] in Data.MELEE: # a new form replaces the old one and keeps its level
+		loadout.erase(stats.form)
+		stats.form = up[0]
+		loadout[up[0]] = stats.melee
+	else:
+		loadout[up[0]] = loadout.get(up[0], 0) + 1
+	if up[2] == "maxhp":
+		combat.hp = stats.maxhp
 
 
 func uni() -> Dictionary:
@@ -144,6 +178,16 @@ func _process(d: float) -> void:
 	if paused:
 		return
 	toast_t -= d
+	if phase in ["pick", "taunt", "finale", "fallen"]:
+		var before := scene
+		scene += d
+		if phase == "taunt" and scene >= Data.TAUNT_TIME:
+			phase = "play"
+		elif phase == "finale":
+			if before < Data.FINALE.burst and scene >= Data.FINALE.burst: # hidden in the flash: only his crown is left
+				combat.vanish()
+			if scene >= Data.FINALE.end:
+				clear_wave()
 	if phase == "cine":
 		var beat: Dictionary = Data.CINE
 		var before := cine
@@ -185,6 +229,12 @@ func _input(ev: InputEvent) -> void:
 				new_run(false, dest)
 			cine = Data.CINE.end
 		return
+	if phase == "fallen": # beaten by Loki: the only way on is back to the main menu
+		var click: bool = ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and hud.main_rect().has_point(ev.position)
+		if scene > 1.0 and (click or ev.is_action_pressed("ui_accept")):
+			main_menu()
+			get_viewport().set_input_as_handled()
+		return
 	if ev.is_action_pressed("ui_cancel"):
 		paused = not paused
 		menu = 0
@@ -213,15 +263,11 @@ func _input(ev: InputEvent) -> void:
 		new_run(phase == "over") # after a death, abilities come back at level 1
 		start_wave()
 	elif phase == "pick" and ev is InputEventKey and ev.pressed and ev.physical_keycode in [KEY_1, KEY_2, KEY_3]:
-		var up: Array = choices[ev.physical_keycode - KEY_1]
-		var stats: Dictionary = combat.stats
-		stats[up[2]] += up[3]
-		if up[0] in Data.MELEE: # a new form replaces the old one and keeps its level
-			loadout.erase(stats.form)
-			stats.form = up[0]
-			loadout[up[0]] = stats.melee
-		else:
-			loadout[up[0]] = loadout.get(up[0], 0) + 1
-		if up[2] == "maxhp":
-			combat.hp = stats.maxhp
-		start_wave()
+		take(choices[ev.physical_keycode - KEY_1])
+	elif phase == "pick" and scene > 0.4 and ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT: # the short wait keeps a click meant for the fight from choosing
+		for i in 3:
+			if hud.pick_rect(i).has_point(ev.position):
+				take(choices[i])
+				break
+	elif phase == "taunt" and ev is InputEventKey and ev.pressed and ev.physical_keycode == KEY_ENTER: # ENTER cuts Loki short
+		phase = "play"

@@ -1,5 +1,5 @@
 extends Node2D
-## The front of the game: the main menu with its options and keybinds pages, then the opening cutscene that throws you into a run.
+## The front of the game: the main menu with its options, admin and keybinds pages, then the opening cutscene that throws you into a run.
 ## Sound lives here too: the Music and SFX buses, their remembered volumes, the music itself and the menu's blips.
 
 const Data := preload("res://data.gd")
@@ -7,9 +7,11 @@ const INK := Color("07030f") # the dark inside a rift
 const DUSK := Color(0.06, 0.02, 0.12, 0.6) # dims the ballroom behind the menu
 const LIT := Color("ffd24a")
 const DIM := Color(1, 1, 1, 0.7)
-const BACK := {options = 1, keys = 2} # the main menu row each page returns to
+const UP := {options = ["main", 1], keys = ["main", 2], admin = ["options", 2]} # each page's parent, and the row there that leads to it
+const TOP := 9 # the most levels the admin panel hands out of one power
 
-var page := "main" # main, options, keys
+var page := "main" # main, options, admin, keys
+var powers := [] # the admin page's grid: [upgrade name, column (its universe), row] for every upgrade
 var pick := 0 # highlighted row of the current page
 var volume := [0.6, 0.8] # per Data.BUSES, 0..1
 var grab := -1 # volume slider the mouse is dragging, else -1
@@ -38,6 +40,9 @@ func _ready() -> void:
 		AudioServer.add_bus()
 		AudioServer.set_bus_name(AudioServer.bus_count - 1, Data.BUSES[i])
 		set_volume(i, saved.get_value("volume", Data.BUSES[i], volume[i]))
+	for c in Data.UPGRADES.size():
+		for j in Data.UPGRADES[c].size():
+			powers.append([Data.UPGRADES[c][j][0], c, j])
 	music.bus = Data.BUSES[0]
 	blip.stream = tone()
 	blip.bus = Data.BUSES[1]
@@ -88,24 +93,54 @@ func save() -> void:
 	file.save(Data.SETTINGS)
 
 
-func rows() -> int: # main: its buttons; options: a slider per bus, then Back; keys: just Back
-	return {main = Data.MAIN.size(), options = Data.BUSES.size() + 1, keys = 1}[page]
+func rows() -> int: # main: its buttons; options: a slider per bus, Admin Panel, Back; admin: every power, Clear All, Back; keys: just Back
+	return {main = Data.MAIN.size(), options = Data.BUSES.size() + 2, admin = powers.size() + 2, keys = 1}[page]
+
+
+func dial(i: int) -> bool: # row i is adjusted rather than pressed: a volume slider, or a power on the admin page
+	return (page == "options" and i < Data.BUSES.size()) or (page == "admin" and i < powers.size())
+
+
+func label(i: int) -> String: # what button row i says
+	if page == "main":
+		return Data.MAIN[i]
+	if page == "options" and i == Data.BUSES.size():
+		return "Admin Panel"
+	if page == "admin" and i == powers.size():
+		return "Clear All"
+	return "Back"
 
 
 func rect(i: int) -> Rect2: # where row i of the current page sits: a button, or a volume slider
 	var mid := get_viewport_rect().size / 2
 	if page == "main":
 		return Rect2(mid.x - 144, mid.y - 54 + i * 78, 288, 72)
-	if page == "options" and i < Data.BUSES.size():
-		return Rect2(mid.x - 100, mid.y - 96 + i * 84, 285, 51)
-	return Rect2(mid.x - 144, mid.y + (96 if page == "options" else 128), 288, 72)
+	if page == "options":
+		return Rect2(mid.x - 100, mid.y - 116 + i * 84, 285, 51) if dial(i) else Rect2(mid.x - 144, mid.y + 56 + (i - Data.BUSES.size()) * 78, 288, 72)
+	if page == "admin":
+		return Rect2(mid.x - 414 + powers[i][1] * 280, mid.y - 196 + powers[i][2] * 34, 268, 32) if dial(i) else Rect2(mid.x - 300 + (i - powers.size()) * 312, mid.y + 160, 288, 72)
+	return Rect2(mid.x - 144, mid.y + 128, 288, 72)
 
 
 func open(to: String) -> void:
 	if page == "options":
 		save()
-	pick = BACK.get(page, 0)
+	pick = UP[page][1] if page in UP and UP[page][0] == to else 0
 	page = to
+
+
+func grant(i: int, by: int) -> void: # the admin page: one level more or less of power i, for every new run
+	var gifts: Dictionary = game.admin
+	var power: String = powers[i][0]
+	var level: int = gifts.get(power, 0) + by
+	if power in Data.MELEE and by > 0: # one weapon form at a time: the new one takes over the levels of the old, as it does in a run
+		for form in Data.MELEE:
+			if form != power:
+				level += gifts.get(form, 0)
+				gifts.erase(form)
+	gifts[power] = clampi(level, 0, TOP)
+	if gifts[power] == 0:
+		gifts.erase(power)
 
 
 func choose(i: int) -> void:
@@ -119,8 +154,14 @@ func choose(i: int) -> void:
 				open("keys")
 			3:
 				get_tree().quit()
+	elif page == "admin" and dial(i):
+		grant(i, 1)
+	elif page == "admin" and i == powers.size():
+		game.admin.clear()
+	elif page == "options" and i == Data.BUSES.size():
+		open("admin")
 	elif i == rows() - 1: # Back
-		open("main")
+		open(UP[page][0])
 	else:
 		return
 	beep(1.5)
@@ -129,17 +170,20 @@ func choose(i: int) -> void:
 func _input(ev: InputEvent) -> void:
 	if game.phase != "menu":
 		return
-	var slider := page == "options" and pick < Data.BUSES.size()
 	if ev.is_action_pressed("ui_down") or ev.is_action_pressed("ui_up"):
 		pick = (pick + (1 if ev.is_action_pressed("ui_down") else rows() - 1)) % rows()
 		beep()
-	elif slider and (ev.is_action_pressed("ui_left", true) or ev.is_action_pressed("ui_right", true)):
-		set_volume(pick, volume[pick] + (0.1 if ev.is_action_pressed("ui_right", true) else -0.1))
+	elif dial(pick) and (ev.is_action_pressed("ui_left", true) or ev.is_action_pressed("ui_right", true)):
+		var by := 1 if ev.is_action_pressed("ui_right", true) else -1
+		if page == "admin":
+			grant(pick, by)
+		else:
+			set_volume(pick, volume[pick] + 0.1 * by)
 		beep()
 	elif ev.is_action_pressed("ui_accept"):
 		choose(pick)
 	elif ev.is_action_pressed("ui_cancel") and page != "main":
-		open("main")
+		open(UP[page][0])
 	elif ev is InputEventMouse:
 		var mouse := get_global_mouse_position()
 		var click: bool = ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT
@@ -150,10 +194,13 @@ func _input(ev: InputEvent) -> void:
 			if rect(i).has_point(mouse):
 				pick = i
 				if click and ev.pressed:
-					if page == "options" and i < Data.BUSES.size():
+					if page == "options" and dial(i):
 						grab = i
 					else:
 						choose(i)
+				elif page == "admin" and dial(i) and ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_RIGHT:
+					grant(i, -1)
+					beep()
 				break
 		if grab >= 0:
 			set_volume(grab, (mouse.x - rect(grab).position.x - 18) / 249)
@@ -181,7 +228,7 @@ func draw_menu(size: Vector2) -> void:
 		box(Rect2(mid.x - 192, mid.y - 92, 384, 380))
 	elif page == "options":
 		hint = "LEFT / RIGHT or drag to adjust  ·  ESC back"
-		plate(Rect2(mid.x - 300, mid.y - 190, 600, 400), "OPTIONS")
+		plate(Rect2(mid.x - 300, mid.y - 210, 600, 460), "OPTIONS")
 		for i in Data.BUSES.size(): # a volume slider per bus, built from the health bar's frame
 			var r := rect(i)
 			var tone := Color.WHITE if pick == i else DIM
@@ -190,6 +237,20 @@ func draw_menu(size: Vector2) -> void:
 			draw_rect(Rect2(r.position + Vector2(18, 21), Vector2(249 * volume[i], 15)), LIT if pick == i else Color("c2185b"))
 			draw_texture_rect(bar, r, false)
 			text(Vector2(r.end.x + 14, r.position.y + 36), "%d%%" % roundi(volume[i] * 100), left, -1, 18, tone)
+	elif page == "admin":
+		hint = "click or ENTER: one more level  ·  right click or LEFT: one less  ·  every new run starts with these"
+		plate(Rect2(mid.x - 440, mid.y - 290, 880, 550), "ADMIN PANEL")
+		for c in Data.UPGRADES.size():
+			text(Vector2(mid.x - 408 + c * 280, mid.y - 206), Data.UNIVERSES[c].name, left, -1, 13, DIM)
+		for i in powers.size(): # every power in the game, a column per universe: lit with its level once granted
+			var r := rect(i)
+			var level: int = game.admin.get(powers[i][0], 0)
+			if pick == i:
+				draw_rect(r, Color(1, 1, 1, 0.14))
+			draw_texture_rect_region(icons, Rect2(r.position, Vector2(32, 32)), Rect2(Vector2(Data.ICONS[powers[i][0]]) * 16, Vector2(16, 16)), Color.WHITE if level else Color(1, 1, 1, 0.45))
+			text(r.position + Vector2(42, 22), powers[i][0], left, -1, 15, LIT if level else DIM)
+			if level:
+				text(r.position + Vector2(0, 22), "Lv %d" % level, HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 8, 15, LIT)
 	else:
 		hint = "ESC back"
 		var r := Rect2(mid.x - 400, mid.y - 230, 800, 470)
@@ -206,11 +267,11 @@ func draw_menu(size: Vector2) -> void:
 			text(Vector2(mid.x + 56, y + i * 34), a[1], left, -1, 16, LIT)
 			text(Vector2(mid.x + 126, y + i * 34), a[2], left, -1, 16)
 	for i in rows():
-		if page == "options" and i < Data.BUSES.size():
+		if dial(i):
 			continue
 		var r := rect(i)
 		draw_texture_rect_region(button, r, Rect2(96 if i == pick else 288, 0, 96, 24))
-		text(Vector2(r.position.x, r.position.y + 43), Data.MAIN[i] if page == "main" else "Back", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 17, Color.WHITE if i == pick else DIM)
+		text(Vector2(r.position.x, r.position.y + 43), label(i), HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 17, Color.WHITE if i == pick else DIM)
 	text(Vector2(0, size.y - 12), hint, HORIZONTAL_ALIGNMENT_CENTER, size.x, 13, DIM)
 
 
@@ -249,9 +310,9 @@ func draw_opening(size: Vector2) -> void: # the cutscene, beat by beat (see Data
 		draw_circle(Vector2.ZERO, 20, Color(0, 0, 0, 0.35 * (1 - pull)))
 		draw_set_transform(Vector2.ZERO)
 		if t < beat.rip:
-			hero("Walk" if t < beat.walk else "Idle", t * 1.2, stand)
-		elif pull < 1: # torn off your feet, spinning and shrinking into the portal
-			hero("Hurt", t, stand.lerp(gate, pull) + Vector2(randf_range(-2, 2), 0), 1 - pull, pull * TAU * 3)
+			hero(t < beat.walk, t, stand)
+		elif pull < 1: # torn off your feet, legs flailing, spinning and shrinking into the portal
+			hero(true, t * 2, stand.lerp(gate, pull) + Vector2(randf_range(-2, 2), 0), 1 - pull, pull * TAU * 3)
 		draw_rect(full, Color(1, 1, 1, -0.7 * open if t >= beat.rip else 0.0)) # the flash as it bursts open
 		draw_rect(full, Color(DUSK, DUSK.a * (1 - t / 0.5))) # the menu's dusk lifts
 	else: # the new world, drawn underneath by combat.gd
@@ -299,13 +360,11 @@ func rim(eye: Vector2, r: float, col: Color) -> void: # a rift's edge: broken ar
 		draw_line(eye + Vector2.from_angle(a) * (r + 24), eye + Vector2.from_angle(a) * far, Color(col, 0.7), 4)
 
 
-func hero(anim: String, t: float, at: Vector2, zoom := 1.0, turn := 0.0) -> void: # the Soldier as combat.gd draws them (at = body centre), but free to spin and shrink
-	var k: Dictionary = Data.SPRITES.Soldier
-	var a: Array = k.anims[anim]
-	var tex: Texture2D = combat.art(k.path + a[0])
-	var frame: int = int(t * 10) % (tex.get_width() / a[1])
+func hero(striding: bool, t: float, at: Vector2, zoom := 1.0, turn := 0.0) -> void: # you, facing right as combat.gd draws you (at = body centre), but free to spin and shrink
+	var k: Dictionary = Data.SPRITES[Data.HERO]
+	var col: int = [0, 1, 2, 1][int(t * 8) % 4] if striding else 1
 	draw_set_transform(at, turn, Vector2.ONE * k.zoom * zoom)
-	draw_texture_rect_region(tex, Rect2(-a[2], combat.HALF / k.zoom - k.feet, a[1], tex.get_height()), Rect2(frame * a[1], 0, a[1], tex.get_height()))
+	draw_texture_rect_region(combat.art(k.sheet), Rect2(-48, combat.HALF / k.zoom - k.feet, 96, 96), Rect2(col * 96, 192, 96, 96))
 	draw_set_transform(Vector2.ZERO)
 
 

@@ -4,7 +4,7 @@ const UNIVERSES := [ # enemy flavour: who appears (name = how often), hp/speed m
 	{name = "MEDIEVAL", foes = {Orc = 3, Slime = 2}, flyer = "Skull", bg = Color("2b2118"), col = Color("c9b38a"), hp = 1.6, spd = 0.8, rng = 0.0, weave = 0.0, rate = INF, music = "res://music/medieval.mp3"},
 	{name = "CYBERPUNK", foes = {Marine = 4, Walker = 2, Mech = 1}, flyer = "JetMarine", bg = Color("120a2a"), col = Color("ff3df0"), hp = 0.9, spd = 1.0, rng = 260.0, weave = 0.0, rate = 3.0, music = "res://music/cyberpunk.mp3"},
 	{name = "ARCANE", foes = {Demon = 3, Blood = 2}, flyer = "Specter", bg = Color("0c2a2a"), col = Color("7df9c0"), hp = 0.7, spd = 1.3, rng = 0.0, weave = 0.9, rate = INF, music = "res://music/medieval.mp3"},
-	{name = "THE END OF TIME", foes = {}, flyer = "RiftEye", bg = Color("050505"), col = Color("6dff5a"), hp = 60.0, spd = 0.6, rng = 220.0, weave = 0.0, rate = 1.8, music = "res://music/boss.mp3"},
+	{name = "THE END OF TIME", foes = {}, flyer = "Chitauri", bg = Color("050505"), col = Color("6dff5a"), hp = 60.0, spd = 0.6, rng = 220.0, weave = 0.0, rate = 1.8, music = "res://music/boss.mp3"},
 ]
 const UPGRADES := [ # per universe: [name, description, stat, amount]. Picking one again adds another level.
 	[["Sword", "auto-slash toward the cursor; later picks offer other weapon forms", "melee", 1],
@@ -15,7 +15,7 @@ const UPGRADES := [ # per universe: [name, description, stat, amount]. Picking o
 		["Plate Armor", "-20% damage taken", "armor", 1], ["Whetstone", "+35% damage", "dmg", 0.35]],
 	[["Twin Blaster", "+1 bolt per shot", "shots", 1], ["Overclock", "+30% fire rate", "rate", 0.3],
 		["Thrusters", "+20% move speed", "speed", 0.2], ["Rail Rounds", "bolts pierce +1 enemy", "pierce", 1],
-		["Chrono Implant", "SHIFT slows time, longer per level", "chrono", 1], ["Arm Cannon", "R fires an explosive rocket at the cursor", "cannon", 1],
+		["Sandevistan", "SHIFT slows time, longer per level", "chrono", 1], ["Arm Cannon", "R fires an explosive rocket at the cursor", "cannon", 1],
 		["Grenades", "Q lobs a grenade at the cursor", "grenade", 1], ["Neural Hack", "E turns the enemy at the cursor on its allies (slows Loki)", "hack", 1]],
 	[["Blink", "C teleports you to the cursor", "blink", 1], ["Nova", "periodic blast around you", "nova", 1],
 		["Seeker Bolts", "bolts home in on enemies", "homing", 1], ["Soul Leech", "+3 health per kill", "leech", 3.0],
@@ -32,10 +32,12 @@ const SCIFI := "res://enemies/" # ansimuz's CC0 sideview sci-fi sprites
 const RAVEN := "res://Free - Raven Fantasy Icons/Free - Raven Fantasy Icons/Full Spritesheet/"
 # Characters. anims: name = [file suffix, frame width, x of the body's centre in a frame]; all face right; anchor.y = feet.
 # Missing Idle/Attack fall back to Walk, a missing Hurt tints red, and boom = true dies in an explosion instead of a Death strip.
-# Enemies may also scale the universe's hp and spd, and override r (size), rng (preferred range) and weave (hopping).
+# Enemies may also scale the universe's hp and spd, and override r (size), rng (preferred range), weave (hopping) and drop (health pack chance).
+# sheet = an RPG walk sheet instead: 3 columns of 96x96 frames, with a row each for facing left and right; it has no other poses.
+const HERO := "Coulson" # who you play
 const SPRITES := {
-	Soldier = {path = PACK3 + "Human_Soldier_Sword_Shield/No_Shadows/Human_Soldier_Sword_Shield_", feet = 57, zoom = 4.0, anims = {
-		Idle = ["Idle-Sheet.png", 96, 46], Walk = ["Walk-Sheet.png", 96, 46], Attack = ["Attack1-Sheet.png", 96, 46], Jump = ["Jump_Fall-Sheet.png", 96, 46], Hurt = ["Hurt-Sheet.png", 96, 46]}},
+	Coulson = {sheet = "res://png/noshadow/agentcoulson.png", feet = 92, zoom = 1.0}, # png/48x48 art with its baked-in ground shadow removed
+	Chitauri = {sheet = "res://png/noshadow/chitauriwarrior.png", feet = 92, zoom = 1.0, hp = 1.2, spd = 0.9, r = 30.0, rng = 190.0, weave = 0.0, rate = 2.0, drop = 0.5},
 	Orc = {path = TINY1 + "Orc/Orc/Orc_", feet = 57, zoom = 4.0, anims = {
 		Idle = ["Idle.png", 100, 50], Walk = ["Walk.png", 100, 50], Attack = ["Attack01.png", 100, 50], Hurt = ["Hurt.png", 100, 50], Death = ["Death.png", 100, 50]}},
 	Slime = {path = PACK3 + "Monster_Slime/No_Shadows/Monster_Slime_", feet = 57, zoom = 4.0, hp = 0.6, spd = 1.1, r = 20.0, weave = 0.6, anims = {
@@ -55,14 +57,17 @@ const SPRITES := {
 		Idle = ["idle.png", 48, 16], Walk = ["run.png", 48, 16], Attack = ["shoot.png", 64, 22]}},
 	Specter = {path = RAVEN + "32x32.png", region = Rect2(256, 2080, 32, 32), feet = 24, zoom = 3.0,
 		fly = true, hover = 70.0, hp = 0.8, spd = 1.15, r = 24.0, rng = 150.0, rate = 2.8},
-	RiftEye = {path = RAVEN + "32x32.png", region = Rect2(448, 1408, 32, 32), feet = 22, zoom = 3.0,
-		fly = true, hover = 90.0, hp = 1.2, spd = 1.3, r = 22.0, rng = 190.0, rate = 2.0},
 }
 const BALLROOM := "res://startingscene.png" # behind the main menu, and where the opening cutscene begins
 const BALLROOM_CUT := 0.935 # how far down that image its wall ends: the floor is drawn from there
 const EXPLOSION := "res://enemies/explosion-animation.png" # 9 frames of 112x128
 const ARROW := "res://Tiny RPG Character Asset Pack 01 v2.0 -Free Soldier&Orc/Arrow(Projectile)/Arrow01(32x32).png"
 const LOKI := "res://png/48x48/lokihelmet.png" # 3x4 sheet of 96x96 frames; rows: down, left, right, up
+const LOKI_DMG := 0.9 # Loki's attacks, against what an ordinary enemy of that wave would deal
+const HORN := ["..##....", ".##.....", "##......", "##......", "###.....", ".####...", "..######"] # one of Loki's horns, as pixels
+const TAUNT := "And what makes you think, this is the first time, we've had THIS conversation?" # Loki, the first time you slow time on him
+const TAUNT_TIME := 5.5 # seconds that line holds the fight still
+const FINALE := {burst = 3.8, end = 7.0} # Loki's death: light tears out of him until he bursts, then his crown is left lying until the ending
 const CASTLE := "res://nashas_parallax_worlds_free_castle_town_and_dungeon_gate_v1.0/"
 const NEON := "res://nashas_parallax_worlds_free_neon_downtown_and_rooftops_v1.0/"
 const JUNGLE := "res://nashas_parallax_worlds_free_jungle_temple_and_waterfall_v1.0/"
@@ -95,14 +100,14 @@ const MELEE := { # form: [reach, half-arc in radians, seconds per swing, damage]
 	Flail = [100.0, PI, 1.0, 55.0], Daggers = [50.0, 0.8, 0.2, 20.0]}
 const ELEMENTS := {frost = Color.SKY_BLUE, fire = Color.ORANGE, shock = Color.YELLOW, toxin = Color.LIME_GREEN}
 const ABILITIES := [ # the HUD's ability panes: [stat, key, upgrade name (for its icon), cooldown bar colour]
-	["blink", "C", "Blink", Color("7df9c0")], ["chrono", "SHIFT", "Chrono Implant", Color("ffd24a")], ["grenade", "Q", "Grenades", Color("ff7a3d")],
+	["blink", "C", "Blink", Color("7df9c0")], ["chrono", "SHIFT", "Sandevistan", Color("ffd24a")], ["grenade", "Q", "Grenades", Color("ff7a3d")],
 	["hack", "E", "Neural Hack", Color("ff3df0")], ["cannon", "R", "Arm Cannon", Color("ff9a3d")], ["gauntlet", "F", "Spell Book", Color("66e0ff")]]
 const BEAM := {frost = Color.WHITE, fire = Color.ORANGE, shock = Color.YELLOW, toxin = Color.LIME_GREEN} # Spell Book beam colour per imbued element
 const BEAM_PLAIN := Color("66e0ff")
 const FONT := "res://gui/PixelifySans.ttf"
 const NAME := "CHRONOFRACTURE"
 const MAIN := ["New Game", "Options", "Keybinds", "Quit"] # main menu
-const KEYS := [["A / D", "move"], ["W / SPACE", "jump"], ["MOUSE", "aim"], ["LEFT CLICK", "shoot"], ["1  2  3", "choose an upgrade"], ["ESC", "pause"]] # the keybinds page; abilities are added from ABILITIES
+const KEYS := [["A / D", "move"], ["W / SPACE", "jump"], ["MOUSE", "aim"], ["LEFT CLICK", "shoot"], ["1 2 3 / CLICK", "choose an upgrade"], ["ESC", "pause"]] # the keybinds page; abilities are added from ABILITIES
 const BUSES := ["Music", "SFX"] # audio buses, each with a volume slider on the options page
 const MUSIC := "res://cyberpunk-street-files/Assets/music/cyberpunk-street.ogg" # main menu and ballroom; each universe names its own track, and a backdrop may override it
 const SETTINGS := "user://settings.cfg" # where the volumes are remembered
@@ -115,7 +120,7 @@ const ICONS := { # upgrade name -> (column, row) on the icon sheet
 	"Sword": Vector2i(7, 90), "Spear": Vector2i(4, 91), "Axe": Vector2i(9, 91), "Flail": Vector2i(1, 92), "Daggers": Vector2i(3, 90),
 	"Crossbow": Vector2i(8, 92), "Orbiting Blade": Vector2i(15, 93), "Tower Shield": Vector2i(6, 134), "Plate Armor": Vector2i(0, 120),
 	"Whetstone": Vector2i(15, 41), "Twin Blaster": Vector2i(4, 61), "Overclock": Vector2i(0, 64), "Thrusters": Vector2i(10, 55),
-	"Rail Rounds": Vector2i(9, 64), "Chrono Implant": Vector2i(12, 20), "Arm Cannon": Vector2i(8, 62), "Grenades": Vector2i(11, 47),
+	"Rail Rounds": Vector2i(9, 64), "Sandevistan": Vector2i(12, 20), "Arm Cannon": Vector2i(8, 62), "Grenades": Vector2i(11, 47),
 	"Neural Hack": Vector2i(9, 67), "Blink": Vector2i(12, 41), "Nova": Vector2i(6, 65), "Seeker Bolts": Vector2i(5, 61),
 	"Soul Leech": Vector2i(2, 41), "Spell Book": Vector2i(3, 18), "Frost Imbue": Vector2i(13, 63), "Fire Imbue": Vector2i(13, 62),
 	"Shock Imbue": Vector2i(13, 64), "Toxin Imbue": Vector2i(1, 45)}

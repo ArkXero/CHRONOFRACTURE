@@ -27,6 +27,8 @@ var bursts := [] # explosion animations playing out
 var pickups := [] # health packs lying on the stage
 var beams := [] # Spell Book beams: fixed far end, near end follows the book
 var cdmax := {} # full length of each running cooldown, for the HUD
+var slips := 0 # Sandevistan uses against Loki this fight: he walks through every odd one
+var crown = null # where Loki's crown lies once he has burst (the ground under it), else null
 var textures := {}
 
 @onready var game = get_parent()
@@ -62,11 +64,13 @@ func clear() -> void: # empty the stage of everything but the player
 	blasts.clear()
 	bursts.clear()
 	beams.clear()
+	crown = null
 
 
 func spawn() -> void: # the next wave, or Loki
 	clear()
 	cd.hurt = 1.0
+	slips = 0
 	var size := get_viewport_rect().size
 	var u: Dictionary = game.uni()
 	var boss: bool = game.boss
@@ -84,7 +88,7 @@ func spawn() -> void: # the next wave, or Loki
 		var x := clampf(pos.x + side * size.x * randf_range(0.55, 1.0), -80, WORLD + 80)
 		var y := clampf(pos.y - 100, 72, ground() - r - 40) if fly else ground() - r
 		var e := {pos = Vector2(x, y), vy = 0.0, off = randf_range(-26, 26), kind = kind, hp = 30 * base.hp * k.get("hp", 1.0) * wave_k * para_k,
-			dmg = 8 * (1 + 0.08 * w) * para_k, spd = 85 * base.spd * k.get("spd", 1.0) * (1 + 0.03 * w) * (1 + 0.05 * game.paradox),
+			dmg = 8 * (1 + 0.08 * w) * para_k * (Data.LOKI_DMG if chief else 1.0), spd = 85 * base.spd * k.get("spd", 1.0) * (1 + 0.03 * w) * (1 + 0.05 * game.paradox),
 			r = r, rng = k.get("rng", base.rng), weave = k.get("weave", base.weave), rate = k.get("rate", base.rate) / (1 + 0.1 * game.paradox),
 			t = randf() * 2, n = 0, bane = "", boss = chief, fly = fly, hover = k.get("hover", 0.0), slow = 0.0, burn = 0.0, hack = 0.0, tox = 0,
 			face = -side, moving = false, flinch = 0.0, atk = 0.0}
@@ -118,9 +122,12 @@ func _process(d: float) -> void:
 			corpses.erase(c)
 	if game.phase in Data.SCREENS:
 		cam += 40 * d # ending screens drift past the scenery
-	if game.phase != "play":
-		return
 	var size := get_viewport_rect().size
+	if game.phase == "taunt": # the camera finds Loki while he speaks
+		cam = lerpf(cam, clampf(chief().pos.x - size.x / 2, 0, WORLD - size.x), minf(1, 5 * d))
+	if game.phase != "play":
+		walking = false
+		return
 	var floor_y := ground()
 	var mouse := aim_point()
 	var aim := pos.angle_to_point(mouse)
@@ -184,7 +191,10 @@ func _process(d: float) -> void:
 	if cast("hack", KEY_E, 6.0) and enemies:
 		var target: Dictionary = nearest(mouse)
 		target["slow" if target.boss else "hack"] = 3.0 + stats.hack
-	cast("chrono", KEY_SHIFT, 12.0)
+	if cast("chrono", KEY_SHIFT, 12.0) and game.boss: # Loki has seen this before: he says so once, and ignores every other use
+		slips += 1
+		if slips == 1:
+			game.taunt()
 	var ed := d * (0.3 if slowmo() else 1.0) # enemy time
 
 	var view := Rect2(cam, 0, size.x, size.y).grow(60)
@@ -212,7 +222,7 @@ func _process(d: float) -> void:
 			shots.erase(s)
 
 	for e in enemies:
-		var k: float = ed * (0.4 if e.slow > 0 else 1.0)
+		var k: float = (d if e.boss and slips % 2 == 1 else ed) * (0.4 if e.slow > 0 else 1.0)
 		var prey = nearest(e.pos, e) if e.hack > 0 else null # hacked enemies hunt their allies
 		var goal: Vector2 = pos if prey == null else prey.pos
 		var dist: float = e.pos.distance_to(goal)
@@ -272,11 +282,11 @@ func _process(d: float) -> void:
 			elif b.pos.distance_to(pos) < b.r:
 				hurt(b.dmg)
 
-	for e in enemies.filter(func(x): return x.hp <= 0):
+	for e in enemies.filter(func(x): return x.hp <= 0 and not x.boss): # Loki's own end is the finale, below
 		enemies.erase(e)
 		corpses.append({pos = e.pos, r = e.r, face = e.face, boss = e.boss, kind = e.kind, t = 0.0})
 		hp = minf(hp + stats.leech, stats.maxhp)
-		if not e.boss and randf() < Data.DROP:
+		if randf() < Data.SPRITES[e.kind].get("drop", Data.DROP):
 			pickups.append({pos = e.pos, vy = -300.0, t = Data.PACK_LIFE})
 		if e.bane == "volatile":
 			boom(e.pos, 80, e.dmg * 1.5, 0.7, false)
@@ -298,10 +308,29 @@ func _process(d: float) -> void:
 		elif p.t <= 0:
 			pickups.erase(p)
 
+	var loki = chief()
 	if hp <= 0: # death is resolved once, and always before a wave can be awarded
 		game.die()
-	elif enemies.is_empty() or (game.boss and not enemies.any(func(e): return e.boss)):
+	elif loki != null and loki.hp <= 0: # everything stops for his death
+		shots.clear()
+		blasts.clear()
+		beams.clear()
+		game.finale()
+	elif enemies.is_empty():
 		game.clear_wave()
+
+
+func chief(): # Loki while he is on stage, else null
+	for e in enemies:
+		if e.boss:
+			return e
+	return null
+
+
+func vanish() -> void: # Loki and his escort are gone in the flash; his crown drops where he stood
+	var loki = chief()
+	crown = Vector2(loki.pos.x, surface(loki.pos.x, loki.pos.y + loki.r))
+	enemies.clear()
 
 
 func loki(e: Dictionary, aim: float) -> void:
@@ -477,11 +506,13 @@ func _draw() -> void:
 				for dx in [-9, 9]:
 					draw_rect(Rect2(feet + Vector2(dx - 4, -4), Vector2(8, 18 + 8 * sin(clock * 40))), Color("3df0ff"))
 			else:
-				for j in 3: # a drifting trail beneath the levitating skulls, spirits and eyes
+				for j in 3: # a drifting trail beneath the levitating skulls and spirits
 					draw_circle(feet + Vector2(sin(clock * 4 + j) * 8, 6 + j * 10), 6 - j, Color(u.col, 0.3 - j * 0.08))
 		if e.hack > 0 or e.bane:
 			draw_aura(feet, e.r, Data.BANES.get(e.bane, Color.CYAN) if e.hack <= 0 else Color.CYAN, e.pos.x)
-		if e.boss:
+		if e.boss and game.phase == "finale":
+			draw_finale(e, feet)
+		elif e.boss:
 			var col: int = int(e.t * 6) % 3 if e.moving else 1
 			var surge: float = clampf((e.t / e.rate - 0.5) / 0.5, 0, 1) # he gathers power through the second half of each wind-up
 			for j in 10: # motes of light pulled into him, quicker and brighter as the attack nears
@@ -505,6 +536,8 @@ func _draw() -> void:
 			var c: Color = Data.BANES.get(label, Color.CYAN)
 			draw_string_outline(font, e.pos + Vector2(-40, -e.r - 20), label, HORIZONTAL_ALIGNMENT_CENTER, 80, 12, 4, Color.BLACK)
 			draw_string(font, e.pos + Vector2(-40, -e.r - 20), label, HORIZONTAL_ALIGNMENT_CENTER, 80, 12, c)
+	if crown != null:
+		draw_crown(crown)
 	for p in pickups:
 		if p.t < 2 and int(p.t * (6 if p.t > 1 else 12)) % 2 == 0: # blinks in its last two seconds, faster in the last one
 			continue
@@ -534,20 +567,20 @@ func _draw() -> void:
 	draw_shadow(pos.x, surface(pos.x, sole.y), 20)
 	if stats.melee > 0 and cd.melee > 0: # swing, with a fading slash
 		var m: Array = Data.MELEE[stats.form]
-		draw_actor("Soldier", "Attack", (1 - cd.melee / m[2]) * 0.8, sole, face, tone, false)
+		draw_actor(Data.HERO, "Attack", (1 - cd.melee / m[2]) * 0.8, sole, face, tone, false)
 		draw_arc(pos, m[0], aim - m[1], aim + m[1], 24, Color(tint(), cd.melee / m[2]), 5)
 	elif absf(sole.y - surface(pos.x, sole.y)) > 1 or absf(vel_y) > 1:
-		draw_actor("Soldier", "Jump", remap(vel_y, -JUMP, JUMP, 0.0, 0.59), sole, face, tone, false) # rising frames, then falling ones
+		draw_actor(Data.HERO, "Jump", remap(vel_y, -JUMP, JUMP, 0.0, 0.59), sole, face, tone, false) # rising frames, then falling ones
 	elif walking:
-		draw_actor("Soldier", "Walk", clock * 1.2, sole, face, tone)
+		draw_actor(Data.HERO, "Walk", clock * 1.2, sole, face, tone)
 	else:
-		draw_actor("Soldier", "Idle", clock, sole, face, tone)
+		draw_actor(Data.HERO, "Idle", clock, sole, face, tone)
 	if charge > 0:
 		draw_circle(pos + Vector2.from_angle(aim) * 34, 8 + 12 * charge, Color(beam_tint(), 0.4))
 		draw_circle(pos + Vector2.from_angle(aim) * 34, 4 + 10 * charge, Color.WHITE)
 	for b in beams:
 		draw_beam(b)
-	if game.phase != "cine":
+	if game.phase in ["play", "pick", "shift"]:
 		draw_line(pos + Vector2.from_angle(aim) * 40, pos + Vector2.from_angle(aim) * 52, Color(1, 1, 1, 0.7), 3) # aim tick
 	draw_set_transform(Vector2.ZERO)
 
@@ -645,6 +678,12 @@ func draw_sprite(tex: Texture2D, src: Rect2, feet: Vector2, anchor: Vector2, zoo
 
 func draw_actor(kind: String, anim: String, t: float, feet: Vector2, flip: float, mod: Color, loop := true) -> void: # 10 frames a second
 	var k: Dictionary = Data.SPRITES[kind]
+	if k.has("sheet"): # walk sheets only stride or stand, so a hit or a death is a red tint and a jump is a held stride
+		if anim in ["Hurt", "Death"]:
+			mod *= Color(1, 0.45, 0.45)
+		var col: int = [0, 1, 2, 1][int(t * 8) % 4] if anim == "Walk" else 0 if anim == "Jump" else 1
+		draw_sprite(art(k.sheet), Rect2(col * 96, 96 if flip < 0 else 192, 96, 96), feet, Vector2(48, k.feet), k.zoom, 1.0, mod)
+		return
 	if k.has("region"): # Raven atlas sprites float in code rather than using an animation strip
 		if anim == "Hurt":
 			mod *= Color(1, 0.45, 0.45)
@@ -657,6 +696,42 @@ func draw_actor(kind: String, anim: String, t: float, feet: Vector2, flip: float
 	var n: int = tex.get_width() / a[1]
 	var f := int(t * 10) % n if loop else clampi(int(t * 10), 0, n - 1)
 	draw_sprite(tex, Rect2(f * a[1], 0, a[1], tex.get_height()), feet, Vector2(a[2], k.feet), k.zoom, flip, mod)
+
+
+func draw_finale(e: Dictionary, feet: Vector2) -> void: # Loki coming apart: more, longer and brighter rays of light tear out of him until the flash
+	var build: float = minf(game.scene / Data.FINALE.burst, 1)
+	draw_circle(e.pos, 30 + 100 * build, Color(0.8, 1, 0.75, 0.25 * build))
+	for j in 1 + int(build * build * 26): # each ray keeps its own direction; new ones keep breaking out
+		var a := j * 2.399 + sin(clock * 3 + j) * 0.04
+		var far := (120 + 1100 * build) * (0.45 + 0.55 * fposmod(j * 0.618, 1.0)) * (0.85 + 0.15 * sin(clock * 30 + j * 1.7))
+		draw_line(e.pos, e.pos + Vector2.from_angle(a) * far, Color(0.75, 1, 0.7, 0.35), 10 + 14 * build)
+		draw_line(e.pos, e.pos + Vector2.from_angle(a) * far, Color.WHITE, 3 + 5 * build)
+	var shake := Vector2(randf_range(-1, 1), randf_range(-1, 1)) * (2 + 10 * build)
+	draw_sprite(art(Data.LOKI), Rect2(96, 0, 96, 96), feet + shake, Vector2(48, 90), 1.5, 1.0, Color.WHITE.lerp(Color(0.6, 1, 0.65), build)) # facing you
+	for j in int(build * 14): # cracks of light opening across his body
+		var at: Vector2 = e.pos + shake + Vector2(sin(j * 12.9) * e.r * 0.6, cos(j * 7.3) * e.r)
+		draw_rect(Rect2(at.snappedf(4), Vector2(4, 4 + 4 * (j % 3))), Color(1, 1, 0.9, 0.6 + 0.4 * sin(clock * 25 + j)))
+
+
+func draw_crown(at: Vector2) -> void: # Loki's horned crown, lying where he stood (at = the ground under it), on a 4px grid
+	var p := 4.0
+	var gold := Color("e8b923")
+	draw_shadow(at.x, at.y, 26)
+	draw_circle(at - Vector2(0, 6 * p), 44 + 5 * sin(clock * 3), Color(1, 0.9, 0.4, 0.12))
+	for side in [-1.0, 1.0]: # a horn curling up and out from each end of the band
+		for y in Data.HORN.size():
+			for x in 8:
+				if Data.HORN[y][x] == "#":
+					var cell := at + Vector2((x - 9) * p if side < 0 else (8 - x) * p, (y - 10) * p)
+					draw_rect(Rect2(cell + Vector2(0, p), Vector2(p, p)), Color("120a1c"))
+					draw_rect(Rect2(cell, Vector2(p, p)), gold if y > 1 else Color("fff3b0"))
+	draw_rect(Rect2(at + Vector2(-5, -4) * p, Vector2(10, 4) * p), Color("120a1c")) # the band, with its gem
+	draw_rect(Rect2(at + Vector2(-4, -4) * p, Vector2(8, 3) * p), gold)
+	draw_rect(Rect2(at + Vector2(-4, -4) * p, Vector2(8, 1) * p), Color("fff3b0"))
+	draw_rect(Rect2(at + Vector2(-1, -3) * p, Vector2(2, 2) * p), Color("1fae4f"))
+	var glint := fposmod(clock * 0.8, 1.0) # a sparkle running along it now and then
+	if glint < 0.25:
+		draw_rect(Rect2((at + Vector2(-32 + glint * 256, -5 * p)).snappedf(p), Vector2(p, p)), Color.WHITE)
 
 
 func draw_shadow(x: float, floor_y: float, w: float) -> void:

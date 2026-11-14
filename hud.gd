@@ -1,9 +1,8 @@
 extends Node2D
-## Everything drawn over the stage: health bar, ability panes, Loki's health, upgrade picks, pause menu and ending screens.
+## Everything drawn over the stage: health bar, ability panes, Loki's health and words, upgrade picks, pause menu, game over and ending screens.
 
 const Data := preload("res://data.gd")
 const SLOT := 64.0 # ability pane size on screen (32px art at 2x)
-const HORN := ["..##....", ".##.....", "##......", "##......", "###.....", ".####...", "..######"] # one of Loki's horns, as pixels
 const GOLD := Color("e8b923")
 const NAME := ["#.....###..#...#.#####", "#....#...#.#..#....#..", "#....#...#.###.....#..", "#....#...#.#..#....#..", "#####.###..#...#.#####"] # LOKI, as pixels
 
@@ -46,7 +45,12 @@ func menu_rect(i: int) -> Rect2: # where pause menu entry i sits; game.gd uses t
 	return Rect2(size.x / 2 - 144, top + i * 80, 288, 72)
 
 
-func main_rect() -> Rect2: # Main Menu on an ending screen
+func pick_rect(i: int) -> Rect2: # where upgrade choice i sits; game.gd uses this for mouse picking
+	var size := get_viewport_rect().size
+	return Rect2(size.x / 2 - 344, size.y * 0.39 + 38 + i * 100, 688, 92)
+
+
+func main_rect() -> Rect2: # Main Menu on an ending or game over screen
 	var size := get_viewport_rect().size
 	return Rect2(size.x / 2 - 144, size.y - 120, 288, 72)
 
@@ -62,6 +66,8 @@ func _draw() -> void:
 		var hover := r.has_point(get_global_mouse_position())
 		draw_texture_rect_region(button, r, Rect2(96 if hover else 0, 0, 96, 24))
 		text(Vector2(r.position.x, r.position.y + 43), "Main Menu", center, r.size.x, 17)
+	elif game.phase == "fallen":
+		draw_fallen(size)
 	else:
 		draw_health(size)
 		draw_abilities(size)
@@ -71,19 +77,29 @@ func _draw() -> void:
 		if game.phase == "pick":
 			draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.75))
 			var offer := "WAVE %d CLEARED: choose one %s upgrade" % [game.waves, game.uni().name]
-			text(Vector2(0, size.y * 0.22), offer, center, size.x, 22)
+			text(Vector2(0, size.y * 0.39), offer, center, size.x, 22) # low enough to clear a toast still on screen
 			for i in 3: # one row per choice: icon in a pane, then name and what it does
 				var up: Array = game.choices[i]
 				var lvl: int = game.loadout.get(up[0], 0)
-				var at := Vector2(size.x / 2 - 330, size.y * 0.22 + 44 + i * 100)
-				draw_texture_rect_region(slot, Rect2(at, Vector2(80, 80)), Rect2(32, 0, 32, 32))
+				var row := pick_rect(i)
+				var at := row.position + Vector2(14, 6)
+				var hover := row.has_point(get_global_mouse_position())
+				if hover:
+					draw_rect(row, Color(1, 1, 1, 0.1))
+				draw_texture_rect_region(slot, Rect2(at, Vector2(80, 80)), Rect2(64 if hover else 32, 0, 32, 32))
 				icon(up[0], at + Vector2(8, 8), 32, 2)
 				text(at + Vector2(100, 32), "[%d]  %s  (%s)" % [i + 1, up[0], "Lv %d > %d" % [lvl, lvl + 1] if lvl else "new"], HORIZONTAL_ALIGNMENT_LEFT, 560, 22, Color.GOLD)
 				text(at + Vector2(100, 58), up[1], HORIZONTAL_ALIGNMENT_LEFT, 560, 16)
+			text(Vector2(0, pick_rect(2).end.y + 26), "click an upgrade, or press 1 / 2 / 3", center, size.x, 13, Color(1, 1, 1, 0.7))
 		if game.toast_t > 0:
 			text(Vector2(0, size.y * 0.31), game.toast, center, size.x, 20, Color.GOLD)
 		if game.phase == "shift":
 			draw_shift(size)
+		elif game.phase == "taunt":
+			draw_taunt(size)
+		elif game.phase == "finale": # the screen whites out as Loki bursts, then clears on what is left
+			var since: float = game.scene - Data.FINALE.burst
+			draw_rect(Rect2(Vector2.ZERO, size), Color(1, 1, 1, clampf(1 + since / 0.5 if since < 0 else 1 - since / 1.4, 0, 1)))
 	if game.paused:
 		draw_menu(size)
 
@@ -134,9 +150,9 @@ func draw_loki_bar(size: Vector2, part: float) -> void: # hand-drawn on a 4px gr
 		draw_rect(Rect2(at + Vector2(floorf(w * i / 10 / p) * p, 0), Vector2(p, 4 * p)), Color("120a1c"))
 	for side in [-1.0, 1.0]: # a horn curling up from each end
 		var root := at + Vector2(-3 * p if side < 0 else w + 3 * p, 5 * p)
-		for y in HORN.size():
+		for y in Data.HORN.size():
 			for x in 8:
-				if HORN[y][x] == "#":
+				if Data.HORN[y][x] == "#":
 					var cell := Vector2(root.x + (x - 8) * p if side < 0 else root.x + (7 - x) * p, root.y + (y - 7) * p)
 					draw_rect(Rect2(cell + Vector2(0, p), Vector2(p, p)), Color("120a1c"))
 					draw_rect(Rect2(cell, Vector2(p, p)), GOLD if y > 1 else Color("fff3b0"))
@@ -154,6 +170,36 @@ func draw_loki_bar(size: Vector2, part: float) -> void: # hand-drawn on a 4px gr
 				var cell := Vector2(left + 60 + x * p, at.y - 36 + y * p)
 				draw_rect(Rect2(cell + Vector2(p, p), Vector2(p, p)), Color("0f7a3a")) # emerald drop shadow
 				draw_rect(Rect2(cell, Vector2(p, p)), Color("fff3b0") if y == 0 else GOLD if y < 4 else Color("9c6b12"))
+
+
+func draw_taunt(size: Vector2) -> void: # the fight is held still under letterbox bars while Loki's line types out
+	var bars := 64 * minf(game.scene / 0.3, 1)
+	draw_rect(Rect2(0, 0, size.x, bars), Color.BLACK)
+	draw_rect(Rect2(0, size.y - bars, size.x, bars), Color.BLACK)
+	var r := Rect2(size.x / 2 - 390, 184, 780, 150) # under his health bar, clear of everyone standing on the stage
+	box(r)
+	draw_texture_rect_region(combat.art(Data.LOKI), Rect2(r.position + Vector2(30, 33), Vector2(96, 84)), Rect2(120, 6, 48, 42)) # his head, as on his health bar
+	text(r.position + Vector2(150, 48), "LOKI", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, GOLD)
+	text(r.position + Vector2(150, 78), Data.TAUNT.left(int(game.scene * 30)), HORIZONTAL_ALIGNMENT_LEFT, 590, 20)
+	text(r.position + Vector2(0, r.size.y - 16), "ENTER", HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 30, 12, Color(1, 1, 1, 0.5))
+
+
+func draw_fallen(size: Vector2) -> void: # beaten by Loki: GAME OVER slams in over the frozen fight, and only the main menu is offered
+	var slam := 1 + 2.5 * pow(1 - minf(game.scene / 0.35, 1), 3) # starts huge, lands at full size
+	var show := clampf((game.scene - 0.6) / 0.6, 0, 1) # then the rest fades in
+	var beat := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 400.0)
+	var center := HORIZONTAL_ALIGNMENT_CENTER
+	draw_rect(Rect2(Vector2.ZERO, size), Color(0.07, 0, 0.02, 0.82 * minf(game.scene / 0.35, 1)))
+	draw_set_transform(Vector2(size.x / 2, size.y * 0.42), 0, Vector2(slam, slam))
+	draw_string_outline(font, Vector2(-600, 10), "GAME OVER", center, 1200, 120, 16, Color("120a1c"))
+	draw_string(font, Vector2(-594, 18), "GAME OVER", center, 1200, 120, Color("5a0a14")) # a deep red shadow under crimson that slowly pulses
+	draw_string(font, Vector2(-600, 10), "GAME OVER", center, 1200, 120, Color("c8323c").lerp(Color("ff5a5a"), beat))
+	draw_set_transform(Vector2.ZERO)
+	draw_rect(Rect2(size.x / 2 - 210 * show, size.y * 0.42 + 40, 420 * show, 4), GOLD)
+	text(Vector2(0, size.y * 0.42 + 84), "Loki permits no rebirth. The timeline ends here.", center, size.x, 20, Color(1, 0.95, 0.75, show))
+	var r := main_rect()
+	draw_texture_rect_region(button, r, Rect2(96 if r.has_point(get_global_mouse_position()) else 0, 0, 96, 24), Color(1, 1, 1, show))
+	text(Vector2(r.position.x, r.position.y + 43), "Main Menu", center, r.size.x, 17, Color(1, 1, 1, show))
 
 
 func draw_shift(size: Vector2) -> void: # a rift irises shut on the player, the destination is named in the dark, then it opens on the new world
