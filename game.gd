@@ -38,6 +38,7 @@ func new_run(keep := false, to := randi() % 3) -> void: # keep: carry the last r
 	var kept: Array = loadout.keys() if keep else []
 	waves = 0
 	paradox = 0
+	boss = false
 	loadout.clear()
 	combat.reset()
 	for pool in Data.UPGRADES:
@@ -109,6 +110,19 @@ func say(text: String) -> void:
 	toast_t = 4.0
 
 
+func main_menu() -> void:
+	phase = "menu"
+	gui = 0.0
+	paused = false
+	toast_t = 0.0
+	combat.clear()
+	combat.pickups.clear()
+	combat.charge = 0.0
+	$Title.page = "main"
+	$Title.pick = 0
+	$Title.grab = -1
+
+
 func choose(i: int) -> void: # a pause menu entry
 	paused = false
 	match i:
@@ -121,6 +135,8 @@ func choose(i: int) -> void: # a pause menu entry
 			new_run()
 			start_wave()
 		3:
+			main_menu()
+		4:
 			get_tree().quit()
 
 
@@ -187,6 +203,11 @@ func _input(ev: InputEvent) -> void:
 					menu = i
 					if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
 						choose(i)
+		get_viewport().set_input_as_handled()
+		return
+	if phase in Data.SCREENS and ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and hud.main_rect().has_point(ev.position):
+		main_menu()
+		get_viewport().set_input_as_handled()
 		return
 	if phase in Data.SCREENS and (ev.is_action_pressed("ui_accept") or (ev is InputEventMouseButton and ev.pressed)):
 		new_run(phase == "over") # after a death, abilities come back at level 1

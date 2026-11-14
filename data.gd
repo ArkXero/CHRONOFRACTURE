@@ -1,10 +1,10 @@
 ## Content tables: universes, upgrades, weapon forms, text. Tune the game here.
 
 const UNIVERSES := [ # enemy flavour: who appears (name = how often), hp/speed multipliers, preferred range (0 = melee), weave, seconds per shot
-	{name = "MEDIEVAL", foes = {Orc = 3, Slime = 2}, bg = Color("2b2118"), col = Color("c9b38a"), hp = 1.6, spd = 0.8, rng = 0.0, weave = 0.0, rate = INF, music = "res://music/medieval.mp3"},
-	{name = "CYBERPUNK", foes = {Marine = 4, Walker = 2, Mech = 1}, bg = Color("120a2a"), col = Color("ff3df0"), hp = 0.9, spd = 1.0, rng = 260.0, weave = 0.0, rate = 3.0, music = "res://music/cyberpunk.mp3"},
-	{name = "ARCANE", foes = {Demon = 3, Blood = 2}, bg = Color("0c2a2a"), col = Color("7df9c0"), hp = 0.7, spd = 1.3, rng = 0.0, weave = 0.9, rate = INF, music = "res://music/medieval.mp3"},
-	{name = "THE END OF TIME", foes = {}, bg = Color("050505"), col = Color("6dff5a"), hp = 60.0, spd = 0.6, rng = 220.0, weave = 0.0, rate = 1.8, music = "res://music/boss.mp3"},
+	{name = "MEDIEVAL", foes = {Orc = 3, Slime = 2}, flyer = "Skull", bg = Color("2b2118"), col = Color("c9b38a"), hp = 1.6, spd = 0.8, rng = 0.0, weave = 0.0, rate = INF, music = "res://music/medieval.mp3"},
+	{name = "CYBERPUNK", foes = {Marine = 4, Walker = 2, Mech = 1}, flyer = "JetMarine", bg = Color("120a2a"), col = Color("ff3df0"), hp = 0.9, spd = 1.0, rng = 260.0, weave = 0.0, rate = 3.0, music = "res://music/cyberpunk.mp3"},
+	{name = "ARCANE", foes = {Demon = 3, Blood = 2}, flyer = "Specter", bg = Color("0c2a2a"), col = Color("7df9c0"), hp = 0.7, spd = 1.3, rng = 0.0, weave = 0.9, rate = INF, music = "res://music/medieval.mp3"},
+	{name = "THE END OF TIME", foes = {}, flyer = "RiftEye", bg = Color("050505"), col = Color("6dff5a"), hp = 60.0, spd = 0.6, rng = 220.0, weave = 0.0, rate = 1.8, music = "res://music/boss.mp3"},
 ]
 const UPGRADES := [ # per universe: [name, description, stat, amount]. Picking one again adds another level.
 	[["Sword", "auto-slash toward the cursor; later picks offer other weapon forms", "melee", 1],
@@ -29,6 +29,7 @@ const TINY1 := "res://Tiny RPG Character Asset Pack 01 v2.0 -Free Soldier&Orc/Ch
 const TINY2 := "res://Tiny RPG Character Asset Pack 02 -Free Demon_A&Blood Monster_A/Characters(100x100 split)/"
 const PACK3 := "res://FreeCharactersAnimationsAssetPack/SpriteSheets(96x96)/"
 const SCIFI := "res://enemies/" # ansimuz's CC0 sideview sci-fi sprites
+const RAVEN := "res://Free - Raven Fantasy Icons/Free - Raven Fantasy Icons/Full Spritesheet/"
 # Characters. anims: name = [file suffix, frame width, x of the body's centre in a frame]; all face right; anchor.y = feet.
 # Missing Idle/Attack fall back to Walk, a missing Hurt tints red, and boom = true dies in an explosion instead of a Death strip.
 # Enemies may also scale the universe's hp and spd, and override r (size), rng (preferred range) and weave (hopping).
@@ -47,6 +48,15 @@ const SPRITES := {
 		Idle = ["idle.png", 48, 16], Walk = ["run.png", 48, 16], Attack = ["shoot.png", 64, 22], Death = ["die.png", 80, 50]}},
 	Walker = {path = SCIFI, feet = 63, zoom = 2.0, hp = 1.8, spd = 0.7, r = 44.0, boom = true, anims = {Walk = ["bipedal-unit.png", 80, 38]}},
 	Mech = {path = SCIFI, feet = 79, zoom = 2.0, hp = 2.4, spd = 0.8, r = 52.0, rng = 0.0, boom = true, anims = {Walk = ["mech-unit.png", 96, 48]}},
+	Skull = {path = RAVEN + "32x32.png", region = Rect2(416, 1696, 32, 32), feet = 24, zoom = 3.0,
+		fly = true, hover = 0.0, hp = 0.55, spd = 1.5, r = 24.0, rng = 0.0, rate = INF},
+	JetMarine = {path = SCIFI + "space-marine-", feet = 48, zoom = 2.0, fly = true, hover = 80.0,
+		hp = 0.75, spd = 1.3, r = 24.0, rng = 230.0, rate = 2.4, boom = true, jets = true, anims = {
+		Idle = ["idle.png", 48, 16], Walk = ["run.png", 48, 16], Attack = ["shoot.png", 64, 22]}},
+	Specter = {path = RAVEN + "32x32.png", region = Rect2(256, 2080, 32, 32), feet = 24, zoom = 3.0,
+		fly = true, hover = 70.0, hp = 0.8, spd = 1.15, r = 24.0, rng = 150.0, rate = 2.8},
+	RiftEye = {path = RAVEN + "32x32.png", region = Rect2(448, 1408, 32, 32), feet = 22, zoom = 3.0,
+		fly = true, hover = 90.0, hp = 1.2, spd = 1.3, r = 22.0, rng = 190.0, rate = 2.0},
 }
 const BALLROOM := "res://startingscene.png" # behind the main menu, and where the opening cutscene begins
 const BALLROOM_CUT := 0.935 # how far down that image its wall ends: the floor is drawn from there
@@ -70,6 +80,16 @@ const BACKDROPS := [ # per universe: the places it can look like. ground = where
 		props = [["prop-planet-big.png", 0.7, 0.18, 0.2], ["prop-planet-small.png", 0.2, 0.3, 0.12],
 			["asteroid-1.png", 0.45, 0.5, 0.35], ["asteroid-2.png", 0.9, 0.62, 0.45], ["asteroid-2.png", 0.1, 0.12, 0.3]]}],
 ]
+# [stage x, height above the floor, width]. Each 100px step is within the base jump's 152px reach.
+const LEDGES := [Vector3(240, 100, 240), Vector3(540, 200, 240), Vector3(840, 100, 240),
+	Vector3(1140, 200, 240), Vector3(1440, 100, 240), Vector3(1940, 100, 240),
+	Vector3(2240, 200, 240), Vector3(2540, 100, 240), Vector3(2840, 200, 240), Vector3(3140, 100, 240)]
+const PLATFORMS := [ # existing art, cropped to a stone cornice, roof, mossy ledge, or asteroid
+	{path = "res://Pixel-Art-Battlegrounds/PNG/Battleground2/Bright/floor.png", region = Rect2(120, 512, 480, 96), edge = Color("d2c494")},
+	{path = "res://cyberpunk-street-files/Assets/Version 2/Layers/foreground.png", region = Rect2(488, 24, 62, 16), edge = Color("ff3df0")},
+	{path = "res://Pixel-Art-Battlegrounds/PNG/Battleground3/Bright/grass&road.png", region = Rect2(200, 530, 480, 96), edge = Color("7fb66b")},
+	{path = "res://space_background_pack/Assets/Blue Version/layered/asteroid-1.png", region = Rect2(0, 0, 32, 27), edge = Color("6dff5a")},
+]
 const MELEE := { # form: [reach, half-arc in radians, seconds per swing, damage]
 	Sword = [70.0, 0.9, 0.5, 40.0], Spear = [140.0, 0.25, 0.5, 50.0], Axe = [80.0, 1.6, 0.9, 85.0],
 	Flail = [100.0, PI, 1.0, 55.0], Daggers = [50.0, 0.8, 0.2, 20.0]}
@@ -90,7 +110,7 @@ const SETTINGS := "user://settings.cfg" # where the volumes are remembered
 # it fills the screen by dark (the run is set up behind it), you have dropped into a universe by land, the title pops at title,
 # and from fade to end it fades out while the in-game GUI fades in.
 const CINE := {walk = 1.6, rip = 2.6, gone = 4.1, dark = 4.8, land = 5.6, title = 5.8, fade = 7.8, end = 9.0}
-const ICON_SHEET := "res://Free - Raven Fantasy Icons/Free - Raven Fantasy Icons/Full Spritesheet/%dx%d.png" # 16 icons a row, in 16px and 32px versions
+const ICON_SHEET := RAVEN + "%dx%d.png" # 16 icons a row, in 16px and 32px versions
 const ICONS := { # upgrade name -> (column, row) on the icon sheet
 	"Sword": Vector2i(7, 90), "Spear": Vector2i(4, 91), "Axe": Vector2i(9, 91), "Flail": Vector2i(1, 92), "Daggers": Vector2i(3, 90),
 	"Crossbow": Vector2i(8, 92), "Orbiting Blade": Vector2i(15, 93), "Tower Shield": Vector2i(6, 134), "Plate Armor": Vector2i(0, 120),
@@ -99,7 +119,7 @@ const ICONS := { # upgrade name -> (column, row) on the icon sheet
 	"Neural Hack": Vector2i(9, 67), "Blink": Vector2i(12, 41), "Nova": Vector2i(6, 65), "Seeker Bolts": Vector2i(5, 61),
 	"Soul Leech": Vector2i(2, 41), "Spell Book": Vector2i(3, 18), "Frost Imbue": Vector2i(13, 63), "Fire Imbue": Vector2i(13, 62),
 	"Shock Imbue": Vector2i(13, 64), "Toxin Imbue": Vector2i(1, 45)}
-const MENU := ["Resume", "Jump to Loki (testing)", "Restart run", "Quit"] # pause menu
+const MENU := ["Resume", "Jump to Loki (testing)", "Restart run", "Main Menu", "Quit"] # pause menu
 const BANES := {volatile = Color.ORANGE, vampiric = Color.RED, berserker = Color.YELLOW}
 const DROP := 0.05 # chance an enemy drops a health pack
 const HEAL := 0.1 # share of max health a pack restores
