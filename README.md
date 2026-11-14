@@ -52,17 +52,6 @@ Chronofracture has 3 distinct dimensions you can visit, each with their own uniq
 - [@RithikSamanthula](https://github.com/RithikSamanthula)
 - [@RithikSamanthula](https://github.com/RithikSamanthula)
 
+## Acknowledgements of Assets
 
-
-## Road to Completion
-
-- First we started by brainstorming ideas, the theme of bouncing back gave us the idea of bouncing back from death, Nikhil
-
-- Add more integrations
-
-
-## Acknowledgements
-
- - [Awesome Readme Templates](https://awesomeopensource.com/project/elangosundar/awesome-README-templates)
- - [Awesome README](https://github.com/matiassingers/awesome-readme)
- - [How to write a Good readme](https://bulldogjob.com/news/449-how-to-write-a-good-readme-for-your-github-project)
+  - [Assets Doc](https://docs.google.com/document/d/1EdTIvee0Juc90kRs32-u7YAmP-znKXG8OJ6317_iEYg/edit?usp=sharing)
