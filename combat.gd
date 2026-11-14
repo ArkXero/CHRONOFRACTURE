@@ -74,19 +74,23 @@ func spawn() -> void: # the next wave, or Loki
 	var w: int = game.waves + 1
 	var wave_k := 1 + 0.12 * w # difficulty layer A: global wave
 	var para_k: float = 1 + 0.2 * game.paradox # difficulty layer B: Paradox
-	for i in 1 if boss else 4 + w:
-		var kind := "" if boss else pick_foe(u.foes)
+	for i in 3 if boss else 4 + w:
+		var chief := boss and i == 0
+		var kind: String = "" if chief else (u.flyer if boss or i % 4 == 0 else pick_foe(u.foes))
 		var k: Dictionary = Data.SPRITES.get(kind, {}) # this enemy type's own twists on the universe's stats
-		var r: float = 44.0 if boss else k.get("r", 28.0)
+		var base: Dictionary = Data.UNIVERSES[2] if boss and not chief else u # helpers do not inherit Loki's health
+		var fly: bool = k.get("fly", false)
+		var r: float = 44.0 if chief else k.get("r", 28.0)
 		var side := 1.0 if i % 2 == 0 else -1.0 # they close in from just off both edges of the screen
 		var x := clampf(pos.x + side * size.x * randf_range(0.55, 1.0), -80, WORLD + 80)
-		var e := {pos = Vector2(x, ground() - r), vy = 0.0, off = randf_range(-26, 26), kind = kind, hp = 30 * u.hp * k.get("hp", 1.0) * wave_k * para_k,
-			dmg = 8 * (1 + 0.08 * w) * para_k, spd = 85 * u.spd * k.get("spd", 1.0) * (1 + 0.03 * w) * (1 + 0.05 * game.paradox),
-			r = r, rng = k.get("rng", u.rng), weave = k.get("weave", u.weave), rate = u.rate / (1 + 0.1 * game.paradox),
-			t = randf() * 2, n = 0, bane = "", boss = boss, slow = 0.0, burn = 0.0, hack = 0.0, tox = 0,
+		var y := clampf(pos.y - 100, 72, ground() - r - 40) if fly else ground() - r
+		var e := {pos = Vector2(x, y), vy = 0.0, off = randf_range(-26, 26), kind = kind, hp = 30 * base.hp * k.get("hp", 1.0) * wave_k * para_k,
+			dmg = 8 * (1 + 0.08 * w) * para_k, spd = 85 * base.spd * k.get("spd", 1.0) * (1 + 0.03 * w) * (1 + 0.05 * game.paradox),
+			r = r, rng = k.get("rng", base.rng), weave = k.get("weave", base.weave), rate = k.get("rate", base.rate) / (1 + 0.1 * game.paradox),
+			t = randf() * 2, n = 0, bane = "", boss = chief, fly = fly, hover = k.get("hover", 0.0), slow = 0.0, burn = 0.0, hack = 0.0, tox = 0,
 			face = -side, moving = false, flinch = 0.0, atk = 0.0}
 		e.max = e.hp
-		if not boss and randf() < 0.05 + 0.2 * game.paradox:
+		if not chief and randf() < 0.05 + 0.2 * game.paradox:
 			e.bane = Data.BANES.keys().pick_random()
 		enemies.append(e)
 
@@ -129,12 +133,13 @@ func _process(d: float) -> void:
 	walking = run != 0
 	face = 1.0 if mouse.x >= pos.x else -1.0
 	pos.x = clampf(pos.x + run * 260 * stats.speed * d, 30, WORLD - 30)
-	if pos.y >= floor_y - HALF - 1 and (held(KEY_W) or held(KEY_SPACE)):
+	var rest := surface(pos.x, pos.y + HALF)
+	if absf(pos.y + HALF - rest) < 1 and (held(KEY_W) or held(KEY_SPACE)):
 		vel_y = -JUMP
 	vel_y += GRAVITY * d
 	pos.y += vel_y * d
-	if pos.y >= floor_y - HALF:
-		pos.y = floor_y - HALF
+	if vel_y >= 0 and pos.y >= rest - HALF:
+		pos.y = rest - HALF
 		vel_y = 0.0
 	cam = lerpf(cam, clampf(pos.x - size.x / 2, 0, WORLD - size.x), minf(1, 8 * d))
 
@@ -222,14 +227,20 @@ func _process(d: float) -> void:
 		e.moving = step != 0
 		if absf(goal.x - e.pos.x) > 4:
 			e.face = signf(goal.x - e.pos.x)
-		var rest: float = floor_y - e.r
-		if e.weave > 0 and e.pos.y >= rest and sin(e.t * 3) > 0.95: # weavers come at you in hops
-			e.vy = -JUMP * 0.75 * e.weave
-		e.vy += GRAVITY * k
-		e.pos.y += e.vy * k
-		if e.pos.y >= rest:
-			e.pos.y = rest
-			e.vy = 0.0
+		if e.fly: # flyers follow you vertically too; gravity and ledges never pin them down
+			e.pos.x = clampf(e.pos.x, e.r, WORLD - e.r) # ranged flyers must stay reachable at the stage edges
+			var height := clampf(goal.y - e.hover + sin(clock * 3 + e.off) * 16, 72, floor_y - e.r - 24)
+			e.pos.y = move_toward(e.pos.y, height, e.spd * k)
+		else:
+			var stand: float = surface(e.pos.x, e.pos.y + e.r, e.r * 0.5) - e.r
+			var climb: bool = goal.y < e.pos.y - 40 and absf(gap) < 260
+			if absf(e.pos.y - stand) < 1 and (climb or (e.weave > 0 and sin(e.t * 3) > 0.95)):
+				e.vy = -JUMP * (0.9 if climb else 0.75 * e.weave)
+			e.vy += GRAVITY * k
+			e.pos.y += e.vy * k
+			if e.vy >= 0 and e.pos.y >= stand:
+				e.pos.y = stand
+				e.vy = 0.0
 		e.t += k
 		e.slow -= d
 		e.hack -= d
@@ -278,8 +289,12 @@ func _process(d: float) -> void:
 				o.spd *= 1.2
 
 	for p in pickups.duplicate(): # health packs pop up, settle on the ground, and wait until you can use them
+		var stand := surface(p.pos.x, p.pos.y + 18, 10.0) - 18
 		p.vy += GRAVITY * d
-		p.pos.y = minf(p.pos.y + p.vy * d, floor_y - 18)
+		p.pos.y += p.vy * d
+		if p.vy >= 0 and p.pos.y >= stand:
+			p.pos.y = stand
+			p.vy = 0.0
 		p.t -= d
 		if hp < stats.maxhp and p.pos.distance_to(pos) < 44:
 			hp = minf(hp + stats.maxhp * Data.HEAL, stats.maxhp)
@@ -289,7 +304,7 @@ func _process(d: float) -> void:
 
 	if hp <= 0: # death is resolved once, and always before a wave can be awarded
 		game.die()
-	elif enemies.is_empty():
+	elif enemies.is_empty() or (game.boss and not enemies.any(func(e): return e.boss)):
 		game.clear_wave()
 
 
@@ -401,6 +416,22 @@ func ground() -> float: # screen y of the line everyone stands on
 	return get_viewport_rect().size.y * backdrop().ground
 
 
+func platforms() -> Array: # derived from the current world and viewport, so rebirth and resizing cannot leave stale ledges
+	var result := []
+	var floor_y := ground()
+	for ledge in Data.LEDGES:
+		result.append(Rect2(ledge.x, floor_y - minf(ledge.y, maxf(60, floor_y - 100)), ledge.z, 32))
+	return result
+
+
+func surface(x: float, feet: float, radius := 14.0) -> float: # closest support below these feet; one-way platforms let rising actors pass through
+	var y := ground()
+	for p in platforms():
+		if x + radius > p.position.x and x - radius < p.end.x and feet <= p.position.y + 1:
+			y = minf(y, p.position.y)
+	return y
+
+
 func aim_point() -> Vector2: # the cursor, in stage coordinates
 	return get_global_mouse_position() + Vector2(cam, 0)
 
@@ -425,6 +456,7 @@ func _draw() -> void:
 	if slowmo():
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.3, 1, 0.7, 0.1))
 	to_stage()
+	draw_platforms()
 	for b in blasts:
 		if not b.mine: # enemy blasts warn you: sparks racing round the edge of where it will hit
 			for j in 18:
@@ -443,7 +475,14 @@ func _draw() -> void:
 	for e in enemies:
 		var feet: Vector2 = e.pos + Vector2(0, e.r)
 		var mod := Color.SKY_BLUE if e.slow > 0 else Color.WHITE
-		draw_shadow(feet.x, floor_y, e.r * 0.8)
+		draw_shadow(feet.x, surface(feet.x, feet.y), e.r * 0.8)
+		if e.fly:
+			if Data.SPRITES[e.kind].get("jets", false):
+				for dx in [-9, 9]:
+					draw_rect(Rect2(feet + Vector2(dx - 4, -4), Vector2(8, 18 + 8 * sin(clock * 40))), Color("3df0ff"))
+			else:
+				for j in 3: # a drifting trail beneath the levitating skulls, spirits and eyes
+					draw_circle(feet + Vector2(sin(clock * 4 + j) * 8, 6 + j * 10), 6 - j, Color(u.col, 0.3 - j * 0.08))
 		if e.hack > 0 or e.bane:
 			draw_aura(feet, e.r, Data.BANES.get(e.bane, Color.CYAN) if e.hack <= 0 else Color.CYAN, e.pos.x)
 		if e.boss:
@@ -496,12 +535,12 @@ func _draw() -> void:
 
 	var sole := pos + Vector2(0, HALF)
 	var tone := Color.WHITE if cd.hurt <= 0 else Color(1, 1, 1, 0.45)
-	draw_shadow(pos.x, floor_y, 20)
+	draw_shadow(pos.x, surface(pos.x, sole.y), 20)
 	if stats.melee > 0 and cd.melee > 0: # swing, with a fading slash
 		var m: Array = Data.MELEE[stats.form]
 		draw_actor("Soldier", "Attack", (1 - cd.melee / m[2]) * 0.8, sole, face, tone, false)
 		draw_arc(pos, m[0], aim - m[1], aim + m[1], 24, Color(tint(), cd.melee / m[2]), 5)
-	elif pos.y < floor_y - HALF - 1:
+	elif absf(sole.y - surface(pos.x, sole.y)) > 1 or absf(vel_y) > 1:
 		draw_actor("Soldier", "Jump", remap(vel_y, -JUMP, JUMP, 0.0, 0.59), sole, face, tone, false) # rising frames, then falling ones
 	elif walking:
 		draw_actor("Soldier", "Walk", clock * 1.2, sole, face, tone)
@@ -515,6 +554,19 @@ func _draw() -> void:
 	if game.phase != "cine":
 		draw_line(pos + Vector2.from_angle(aim) * 40, pos + Vector2.from_angle(aim) * 52, Color(1, 1, 1, 0.7), 3) # aim tick
 	draw_set_transform(Vector2.ZERO)
+
+
+func draw_platforms() -> void:
+	var style: Dictionary = Data.PLATFORMS[3 if game.boss else game.universe]
+	var tex := art(style.path)
+	for p in platforms():
+		if p.end.x < cam or p.position.x > cam + get_viewport_rect().size.x:
+			continue
+		draw_rect(Rect2(p.position + Vector2(-4, 4), p.size + Vector2(8, 4)), Color(0.02, 0.02, 0.04, 0.7))
+		draw_texture_rect_region(tex, p, style.region)
+		draw_rect(Rect2(p.position, Vector2(p.size.x, 4)), style.edge)
+		for x in [p.position.x + 8, p.end.x - 12]:
+			draw_rect(Rect2(x, p.position.y + 12, 4, 8), style.edge.darkened(0.3))
 
 
 func draw_backdrop(size: Vector2, u: Dictionary, floor_y: float) -> void: # parallax layers, each tiled across the screen
@@ -597,6 +649,11 @@ func draw_sprite(tex: Texture2D, src: Rect2, feet: Vector2, anchor: Vector2, zoo
 
 func draw_actor(kind: String, anim: String, t: float, feet: Vector2, flip: float, mod: Color, loop := true) -> void: # 10 frames a second
 	var k: Dictionary = Data.SPRITES[kind]
+	if k.has("region"): # Raven atlas sprites float in code rather than using an animation strip
+		if anim == "Hurt":
+			mod *= Color(1, 0.45, 0.45)
+		draw_sprite(art(k.path), k.region, feet, Vector2(16, k.feet), k.zoom, flip, mod)
+		return
 	if anim == "Hurt" and not k.anims.has(anim):
 		mod *= Color(1, 0.45, 0.45) # no flinch frames: flash red instead
 	var a: Array = k.anims.get(anim, k.anims.Walk)

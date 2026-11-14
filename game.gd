@@ -38,6 +38,7 @@ func new_run(keep := false, to := randi() % 3) -> void: # keep: carry the last r
 	var kept: Array = loadout.keys() if keep else []
 	waves = 0
 	paradox = 0
+	boss = false
 	loadout.clear()
 	combat.reset()
 	for pool in Data.UPGRADES:
